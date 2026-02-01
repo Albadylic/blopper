@@ -29,13 +29,13 @@ export function checkCollision(
   return false; // No collision
 }
 
-// Check if a piece can be placed at the given position
-export function canPlacePiece(
+// Check if a piece can be dropped at its staging column
+export function canDropPiece(
   grid: Cell[][],
   piece: CurrentPiece
 ): boolean {
   const shape = piece.tetromino.shapes[piece.rotation];
-  return !checkCollision(grid, shape, piece.position);
+  return calculateDropRow(grid, shape, piece.stagingColumn) !== null;
 }
 
 // Check if there's any valid position for a piece on the grid
@@ -61,48 +61,75 @@ export function hasValidPlacement(
   return false; // No valid position found
 }
 
-// Get the ghost piece position (furthest down the piece can go while still being valid)
-// In this game, ghost shows where piece would be placed (no automatic drop)
+// Calculate the row where a piece will land when dropped from a column
+// Returns the row position, or null if the column is blocked
+export function calculateDropRow(
+  grid: Cell[][],
+  shape: TetrominoShape,
+  column: number
+): number | null {
+  const shapeHeight = shape.length;
+  const shapeWidth = shape[0].length;
+
+  // Check if piece fits within column bounds
+  if (column < 0 || column + shapeWidth > GRID_SIZE) {
+    return null;
+  }
+
+  // Start from the top and find the first row where collision occurs
+  // Then place piece one row above that
+  for (let row = 0; row <= GRID_SIZE - shapeHeight; row++) {
+    if (checkCollision(grid, shape, { row, col: column })) {
+      // Collision at this row, so piece lands at row - 1
+      if (row === 0) {
+        return null; // Can't place piece, column is full
+      }
+      return row - 1;
+    }
+  }
+
+  // No collision found, piece lands at bottom
+  return GRID_SIZE - shapeHeight;
+}
+
+// Get the ghost piece position (where piece will land when dropped)
 export function getGhostPosition(
   grid: Cell[][],
   piece: CurrentPiece
 ): Position | null {
-  // In Rotatetris, the ghost is just the current position if valid
-  if (canPlacePiece(grid, piece)) {
-    return piece.position;
+  const shape = piece.tetromino.shapes[piece.rotation];
+  const dropRow = calculateDropRow(grid, shape, piece.stagingColumn);
+
+  if (dropRow === null) {
+    return null;
   }
-  return null;
+
+  return { row: dropRow, col: piece.stagingColumn };
 }
 
-// Find the first valid position for a piece (used when spawning)
-export function findValidPosition(
+// Find the starting staging column for a piece (centered)
+export function getStartingStagingColumn(
+  tetromino: Tetromino,
+  rotation: number = 0
+): number {
+  const shape = tetromino.shapes[rotation];
+  const shapeWidth = shape[0].length;
+  return Math.floor((GRID_SIZE - shapeWidth) / 2);
+}
+
+// Check if any column allows dropping the piece
+export function canDropAnywhere(
   grid: Cell[][],
   tetromino: Tetromino,
   rotation: number = 0
-): Position | null {
+): boolean {
   const shape = tetromino.shapes[rotation];
-  const shapeHeight = shape.length;
   const shapeWidth = shape[0].length;
 
-  // Start from center-top and work outward
-  const startCol = Math.floor((GRID_SIZE - shapeWidth) / 2);
-
-  // Try center first, then spiral outward
-  for (let row = 0; row <= GRID_SIZE - shapeHeight; row++) {
-    for (let colOffset = 0; colOffset < GRID_SIZE; colOffset++) {
-      // Alternate left and right from center
-      const cols = colOffset === 0
-        ? [startCol]
-        : [startCol - colOffset, startCol + colOffset];
-
-      for (const col of cols) {
-        if (col >= 0 && col <= GRID_SIZE - shapeWidth) {
-          if (!checkCollision(grid, shape, { row, col })) {
-            return { row, col };
-          }
-        }
-      }
+  for (let col = 0; col <= GRID_SIZE - shapeWidth; col++) {
+    if (calculateDropRow(grid, shape, col) !== null) {
+      return true;
     }
   }
-  return null; // No valid position
+  return false;
 }

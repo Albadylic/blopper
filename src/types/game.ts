@@ -21,11 +21,11 @@ export type Tetromino = {
   shapes: TetrominoShape[]; // 4 rotation variants (0, 90, 180, 270)
 };
 
-// Current piece being placed
+// Current piece being placed (Connect 4-style: hovers above board)
 export type CurrentPiece = {
   tetromino: Tetromino;
   rotation: number; // 0-3 index into shapes array
-  position: Position; // Top-left corner of bounding box
+  stagingColumn: number; // Column position for piece (used for horizontal positioning)
 };
 
 // Rotation direction for the board
@@ -52,19 +52,15 @@ export type GameState = {
 
 // Game actions for the reducer
 export type GameAction =
-  | { type: 'MOVE_PIECE'; direction: 'up' | 'down' | 'left' | 'right' }
+  | { type: 'MOVE_PIECE'; direction: 'left' | 'right' }
   | { type: 'ROTATE_PIECE' }
-  | { type: 'PLACE_PIECE' }
-  | { type: 'PLACE_AND_SPAWN' } // Places piece, clears lines, spawns new piece atomically
+  | { type: 'DROP_PIECE' } // Drop piece from staging area into grid
   | { type: 'ROTATE_BOARD'; direction: RotationDirection }
   | { type: 'APPLY_GRAVITY' }
   | { type: 'CLEAR_LINES' }
   | { type: 'SPAWN_PIECE' }
   | { type: 'SET_GAME_OVER' }
-  | { type: 'RESTART' }
-  | { type: 'START_ANIMATION'; animationType: 'rotating' | 'falling' | 'clearing' }
-  | { type: 'END_ANIMATION'; animationType: 'rotating' | 'falling' | 'clearing' }
-  | { type: 'SET_ROTATION_ANGLE'; angle: number };
+  | { type: 'RESTART' };
 
 // Scoring thresholds
 export type ScoreMap = {

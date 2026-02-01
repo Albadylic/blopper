@@ -5,21 +5,25 @@ type CellProps = {
   isCurrentPiece?: boolean;
   isValidPlacement?: boolean;
   currentPieceColor?: string;
+  isGhost?: boolean;
 };
 
-export function Cell({ cell, isCurrentPiece, isValidPlacement, currentPieceColor }: CellProps) {
+export function Cell({ cell, isCurrentPiece, isValidPlacement, currentPieceColor, isGhost }: CellProps) {
   let backgroundColor = 'transparent';
   let borderColor = 'rgba(255, 255, 255, 0.1)';
   let boxShadow = 'none';
+  let opacity = 1;
 
   if (isCurrentPiece && currentPieceColor) {
     backgroundColor = currentPieceColor;
     borderColor = 'rgba(255, 255, 255, 0.3)';
-    // Add glow effect for valid placement
-    if (isValidPlacement) {
+    // Ghost pieces are semi-transparent
+    if (isGhost) {
+      opacity = 0.4;
+      boxShadow = `0 0 4px ${currentPieceColor}`;
+    } else if (isValidPlacement) {
       boxShadow = `0 0 8px ${currentPieceColor}`;
     } else {
-      // Show red tint for invalid placement
       backgroundColor = '#ff4444';
     }
   } else if (cell.filled && cell.color) {
@@ -34,6 +38,7 @@ export function Cell({ cell, isCurrentPiece, isValidPlacement, currentPieceColor
         backgroundColor,
         borderColor,
         boxShadow,
+        opacity,
       }}
     />
   );

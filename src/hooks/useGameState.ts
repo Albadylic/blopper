@@ -1,9 +1,9 @@
 import { useReducer, useCallback } from 'react';
-import type { GameState, GameAction, CurrentPiece, RotationDirection } from '../types/game';
+import type { GameState, GameAction, RotationDirection } from '../types/game';
 import { createEmptyGrid, cloneGrid } from '../utils/grid';
-import { getRandomTetromino } from '../constants/tetrominos';
-import { canPlacePiece, findValidPosition, hasValidPlacement, checkCollision } from '../utils/collision';
-import { rotateGrid, calculateRotationAngle } from '../utils/rotation';
+import { getRandomTetromino, GRID_SIZE } from '../constants/tetrominos';
+import { calculateDropRow, getStartingStagingColumn, canDropAnywhere } from '../utils/collision';
+import { rotateGrid } from '../utils/rotation';
 import { applyGravityFully } from '../utils/gravity';
 import { clearLines, hasLinesToClear } from '../utils/lineClearing';
 
@@ -11,15 +11,15 @@ import { clearLines, hasLinesToClear } from '../utils/lineClearing';
 function createInitialState(): GameState {
   const tetromino = getRandomTetromino();
   const grid = createEmptyGrid();
-  const position = findValidPosition(grid, tetromino, 0);
+  const stagingColumn = getStartingStagingColumn(tetromino, 0);
 
   return {
     grid,
-    currentPiece: position ? {
+    currentPiece: {
       tetromino,
       rotation: 0,
-      position,
-    } : null,
+      stagingColumn,
+    },
     nextPieceId: 1,
     score: 0,
     linesCleared: 0,
@@ -33,23 +33,29 @@ function createInitialState(): GameState {
   };
 }
 
-// Check if game is over (no valid placement for current piece)
+// Check if game is over (no valid drop position for current piece in any rotation)
 function checkGameOver(grid: Cell[][], tetromino: typeof TETROMINOS[0]): boolean {
-  // First check if there's any valid placement on current grid
-  if (hasValidPlacement(grid, tetromino)) {
-    return false;
+  // Check all 4 rotations of the piece to see if any can be dropped
+  for (let rotation = 0; rotation < 4; rotation++) {
+    if (canDropAnywhere(grid, tetromino, rotation)) {
+      return false;
+    }
   }
 
-  // Try clockwise rotation
+  // Try clockwise board rotation
   const clockwiseGrid = applyGravityFully(rotateGrid(grid, 'clockwise'));
-  if (hasValidPlacement(clockwiseGrid, tetromino)) {
-    return false;
+  for (let rotation = 0; rotation < 4; rotation++) {
+    if (canDropAnywhere(clockwiseGrid, tetromino, rotation)) {
+      return false;
+    }
   }
 
-  // Try counter-clockwise rotation
+  // Try counter-clockwise board rotation
   const counterClockwiseGrid = applyGravityFully(rotateGrid(grid, 'counterclockwise'));
-  if (hasValidPlacement(counterClockwiseGrid, tetromino)) {
-    return false;
+  for (let rotation = 0; rotation < 4; rotation++) {
+    if (canDropAnywhere(counterClockwiseGrid, tetromino, rotation)) {
+      return false;
+    }
   }
 
   return true; // No valid placements anywhere
@@ -63,83 +69,48 @@ import { TETROMINOS } from '../constants/tetrominos';
 function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'MOVE_PIECE': {
-      if (!state.currentPiece || state.animation.isRotating || state.animation.isFalling) {
+      if (!state.currentPiece) {
         return state;
       }
 
       const { direction } = action;
-      const newPosition = { ...state.currentPiece.position };
+      const shape = state.currentPiece.tetromino.shapes[state.currentPiece.rotation];
+      const shapeWidth = shape[0].length;
+      let newColumn = state.currentPiece.stagingColumn;
 
-      switch (direction) {
-        case 'up':
-          newPosition.row -= 1;
-          break;
-        case 'down':
-          newPosition.row += 1;
-          break;
-        case 'left':
-          newPosition.col -= 1;
-          break;
-        case 'right':
-          newPosition.col += 1;
-          break;
+      if (direction === 'left') {
+        newColumn -= 1;
+      } else if (direction === 'right') {
+        newColumn += 1;
       }
 
-      // Check if new position is valid
-      const newPiece: CurrentPiece = {
-        ...state.currentPiece,
-        position: newPosition,
+      // Check if new column is within bounds
+      if (newColumn < 0 || newColumn + shapeWidth > GRID_SIZE) {
+        return state; // Out of bounds
+      }
+
+      return {
+        ...state,
+        currentPiece: {
+          ...state.currentPiece,
+          stagingColumn: newColumn,
+        },
       };
-
-      if (canPlacePiece(state.grid, newPiece)) {
-        return {
-          ...state,
-          currentPiece: newPiece,
-        };
-      }
-
-      return state; // Invalid move, no change
     }
 
     case 'ROTATE_PIECE': {
-      if (!state.currentPiece || state.animation.isRotating || state.animation.isFalling) {
+      if (!state.currentPiece) {
         return state;
       }
 
       const newRotation = (state.currentPiece.rotation + 1) % 4;
       const newShape = state.currentPiece.tetromino.shapes[newRotation];
+      const newShapeWidth = newShape[0].length;
 
-      // Try to place the rotated piece at the current position
-      let newPosition = state.currentPiece.position;
-
-      // Check if it fits at current position
-      if (checkCollision(state.grid, newShape, newPosition)) {
-        // Try to find a nearby valid position (wall kick)
-        const offsets = [
-          { row: 0, col: 1 },
-          { row: 0, col: -1 },
-          { row: -1, col: 0 },
-          { row: 1, col: 0 },
-          { row: 0, col: 2 },
-          { row: 0, col: -2 },
-        ];
-
-        let found = false;
-        for (const offset of offsets) {
-          const testPos = {
-            row: state.currentPiece.position.row + offset.row,
-            col: state.currentPiece.position.col + offset.col,
-          };
-          if (!checkCollision(state.grid, newShape, testPos)) {
-            newPosition = testPos;
-            found = true;
-            break;
-          }
-        }
-
-        if (!found) {
-          return state; // Can't rotate
-        }
+      // Adjust staging column if rotation would push piece out of bounds
+      let newColumn = state.currentPiece.stagingColumn;
+      if (newColumn + newShapeWidth > GRID_SIZE) {
+        newColumn = GRID_SIZE - newShapeWidth;
       }
 
       return {
@@ -147,68 +118,34 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         currentPiece: {
           ...state.currentPiece,
           rotation: newRotation,
-          position: newPosition,
+          stagingColumn: newColumn,
         },
       };
     }
 
-    case 'PLACE_PIECE': {
-      if (!state.currentPiece || state.animation.isRotating || state.animation.isFalling) {
+    case 'DROP_PIECE': {
+      if (!state.currentPiece) {
         return state;
       }
 
-      // Verify piece can be placed
-      if (!canPlacePiece(state.grid, state.currentPiece)) {
-        return state;
-      }
-
-      // Place the piece on the grid
-      const newGrid = cloneGrid(state.grid);
       const shape = state.currentPiece.tetromino.shapes[state.currentPiece.rotation];
-      const { position, tetromino } = state.currentPiece;
+      const { stagingColumn, tetromino } = state.currentPiece;
 
-      for (let row = 0; row < shape.length; row++) {
-        for (let col = 0; col < shape[row].length; col++) {
-          if (shape[row][col]) {
-            const gridRow = position.row + row;
-            const gridCol = position.col + col;
-            newGrid[gridRow][gridCol] = {
-              filled: true,
-              color: tetromino.color,
-              pieceId: state.nextPieceId,
-            };
-          }
-        }
-      }
+      // Calculate where piece will land
+      const dropRow = calculateDropRow(state.grid, shape, stagingColumn);
 
-      return {
-        ...state,
-        grid: newGrid,
-        currentPiece: null,
-        nextPieceId: state.nextPieceId + 1,
-      };
-    }
-
-    case 'PLACE_AND_SPAWN': {
-      if (!state.currentPiece || state.animation.isRotating || state.animation.isFalling) {
-        return state;
-      }
-
-      // Verify piece can be placed
-      if (!canPlacePiece(state.grid, state.currentPiece)) {
-        return state;
+      if (dropRow === null) {
+        return state; // Can't drop here
       }
 
       // Place the piece on the grid
       let newGrid = cloneGrid(state.grid);
-      const shape = state.currentPiece.tetromino.shapes[state.currentPiece.rotation];
-      const { position, tetromino } = state.currentPiece;
 
       for (let row = 0; row < shape.length; row++) {
         for (let col = 0; col < shape[row].length; col++) {
           if (shape[row][col]) {
-            const gridRow = position.row + row;
-            const gridCol = position.col + col;
+            const gridRow = dropRow + row;
+            const gridCol = stagingColumn + col;
             newGrid[gridRow][gridCol] = {
               filled: true,
               color: tetromino.color,
@@ -230,32 +167,30 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
       // Spawn new piece
       const newTetromino = getRandomTetromino();
-      const newPosition = findValidPosition(newGrid, newTetromino, 0);
+      const newStagingColumn = getStartingStagingColumn(newTetromino, 0);
 
       // Check for game over
-      if (!newPosition) {
-        const isOver = checkGameOver(newGrid, newTetromino);
-        if (isOver) {
-          return {
-            ...state,
-            grid: newGrid,
-            currentPiece: null,
-            nextPieceId: state.nextPieceId + 1,
-            score: state.score + addedScore,
-            linesCleared: state.linesCleared + addedLines,
-            isGameOver: true,
-          };
-        }
+      const isOver = checkGameOver(newGrid, newTetromino);
+      if (isOver) {
+        return {
+          ...state,
+          grid: newGrid,
+          currentPiece: null,
+          nextPieceId: state.nextPieceId + 1,
+          score: state.score + addedScore,
+          linesCleared: state.linesCleared + addedLines,
+          isGameOver: true,
+        };
       }
 
       return {
         ...state,
         grid: newGrid,
-        currentPiece: newPosition ? {
+        currentPiece: {
           tetromino: newTetromino,
           rotation: 0,
-          position: newPosition,
-        } : null,
+          stagingColumn: newStagingColumn,
+        },
         nextPieceId: state.nextPieceId + 1,
         score: state.score + addedScore,
         linesCleared: state.linesCleared + addedLines,
@@ -263,21 +198,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case 'ROTATE_BOARD': {
-      if (state.animation.isRotating || state.animation.isFalling) {
-        return state;
-      }
-
       const { direction } = action;
       const rotatedGrid = rotateGrid(state.grid, direction);
-      const newAngle = calculateRotationAngle(state.animation.rotationAngle, direction);
 
       return {
         ...state,
         grid: rotatedGrid,
-        animation: {
-          ...state.animation,
-          rotationAngle: newAngle,
-        },
       };
     }
 
@@ -309,27 +235,25 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'SPAWN_PIECE': {
       const tetromino = getRandomTetromino();
-      const position = findValidPosition(state.grid, tetromino, 0);
+      const stagingColumn = getStartingStagingColumn(tetromino, 0);
 
       // Check for game over
-      if (!position) {
-        const isOver = checkGameOver(state.grid, tetromino);
-        if (isOver) {
-          return {
-            ...state,
-            currentPiece: null,
-            isGameOver: true,
-          };
-        }
+      const isOver = checkGameOver(state.grid, tetromino);
+      if (isOver) {
+        return {
+          ...state,
+          currentPiece: null,
+          isGameOver: true,
+        };
       }
 
       return {
         ...state,
-        currentPiece: position ? {
+        currentPiece: {
           tetromino,
           rotation: 0,
-          position,
-        } : null,
+          stagingColumn,
+        },
       };
     }
 
@@ -344,42 +268,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return createInitialState();
     }
 
-    case 'START_ANIMATION': {
-      const { animationType } = action;
-      return {
-        ...state,
-        animation: {
-          ...state.animation,
-          isRotating: animationType === 'rotating' ? true : state.animation.isRotating,
-          isFalling: animationType === 'falling' ? true : state.animation.isFalling,
-          isClearing: animationType === 'clearing' ? true : state.animation.isClearing,
-        },
-      };
-    }
-
-    case 'END_ANIMATION': {
-      const { animationType } = action;
-      return {
-        ...state,
-        animation: {
-          ...state.animation,
-          isRotating: animationType === 'rotating' ? false : state.animation.isRotating,
-          isFalling: animationType === 'falling' ? false : state.animation.isFalling,
-          isClearing: animationType === 'clearing' ? false : state.animation.isClearing,
-        },
-      };
-    }
-
-    case 'SET_ROTATION_ANGLE': {
-      return {
-        ...state,
-        animation: {
-          ...state.animation,
-          rotationAngle: action.angle,
-        },
-      };
-    }
-
     default:
       return state;
   }
@@ -390,7 +278,7 @@ export function useGameState() {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
 
   // Movement actions
-  const movePiece = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+  const movePiece = useCallback((direction: 'left' | 'right') => {
     dispatch({ type: 'MOVE_PIECE', direction });
   }, []);
 
@@ -398,12 +286,8 @@ export function useGameState() {
     dispatch({ type: 'ROTATE_PIECE' });
   }, []);
 
-  const placePiece = useCallback(() => {
-    dispatch({ type: 'PLACE_PIECE' });
-  }, []);
-
-  const placeAndSpawn = useCallback(() => {
-    dispatch({ type: 'PLACE_AND_SPAWN' });
+  const dropPiece = useCallback(() => {
+    dispatch({ type: 'DROP_PIECE' });
   }, []);
 
   // Board actions
@@ -423,15 +307,6 @@ export function useGameState() {
     dispatch({ type: 'SPAWN_PIECE' });
   }, []);
 
-  // Animation actions
-  const startAnimation = useCallback((animationType: 'rotating' | 'falling' | 'clearing') => {
-    dispatch({ type: 'START_ANIMATION', animationType });
-  }, []);
-
-  const endAnimation = useCallback((animationType: 'rotating' | 'falling' | 'clearing') => {
-    dispatch({ type: 'END_ANIMATION', animationType });
-  }, []);
-
   // Game control
   const restart = useCallback(() => {
     dispatch({ type: 'RESTART' });
@@ -441,14 +316,11 @@ export function useGameState() {
     state,
     movePiece,
     rotatePiece,
-    placePiece,
-    placeAndSpawn,
+    dropPiece,
     rotateBoard,
     applyGravity,
     clearLines: clearLinesAction,
     spawnPiece,
-    startAnimation,
-    endAnimation,
     restart,
   };
 }

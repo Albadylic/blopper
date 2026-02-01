@@ -1,10 +1,10 @@
 export function Controls() {
   const controls = [
-    { keys: ['↑', '↓', '←', '→'], action: 'Move piece' },
-    { keys: ['R'], action: 'Rotate piece' },
+    { keys: ['←', '→'], action: 'Move piece' },
+    { keys: ['↑'], action: 'Rotate piece' },
+    { keys: ['↓'], action: 'Drop piece' },
     { keys: ['Q'], action: 'Rotate board left' },
     { keys: ['E'], action: 'Rotate board right' },
-    { keys: ['Space'], action: 'Place piece' },
     { keys: ['N'], action: 'New game (when game over)' },
   ];
 

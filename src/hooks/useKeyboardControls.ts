@@ -2,27 +2,25 @@ import { useEffect, useCallback } from 'react';
 import type { RotationDirection } from '../types/game';
 
 type KeyboardActions = {
-  movePiece: (direction: 'up' | 'down' | 'left' | 'right') => void;
+  movePiece: (direction: 'left' | 'right') => void;
   rotatePiece: () => void;
+  dropPiece: () => void;
   restart: () => void;
-  isAnimating: boolean;
   isGameOver: boolean;
   onBoardRotate: (direction: RotationDirection) => void;
-  onPiecePlaced: () => void;
 };
 
 export function useKeyboardControls({
   movePiece,
   rotatePiece,
+  dropPiece,
   restart,
-  isAnimating,
   isGameOver,
   onBoardRotate,
-  onPiecePlaced,
 }: KeyboardActions) {
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
     // Prevent default for game keys
-    const gameKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyR', 'KeyQ', 'KeyE', 'Space'];
+    const gameKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyQ', 'KeyE', 'Space'];
     if (gameKeys.includes(event.code)) {
       event.preventDefault();
     }
@@ -33,19 +31,13 @@ export function useKeyboardControls({
       return;
     }
 
-    // Don't process other keys during animation or game over
-    if (isAnimating || isGameOver) {
+    // Don't process other keys during game over
+    if (isGameOver) {
       return;
     }
 
     switch (event.code) {
-      // Movement
-      case 'ArrowUp':
-        movePiece('up');
-        break;
-      case 'ArrowDown':
-        movePiece('down');
-        break;
+      // Horizontal movement only
       case 'ArrowLeft':
         movePiece('left');
         break;
@@ -53,9 +45,15 @@ export function useKeyboardControls({
         movePiece('right');
         break;
 
-      // Piece rotation
-      case 'KeyR':
+      // Piece rotation (ArrowUp)
+      case 'ArrowUp':
         rotatePiece();
+        break;
+
+      // Drop piece (ArrowDown or Space)
+      case 'ArrowDown':
+      case 'Space':
+        dropPiece();
         break;
 
       // Board rotation
@@ -65,13 +63,8 @@ export function useKeyboardControls({
       case 'KeyE':
         onBoardRotate('clockwise');
         break;
-
-      // Place piece
-      case 'Space':
-        onPiecePlaced();
-        break;
     }
-  }, [movePiece, rotatePiece, restart, isAnimating, isGameOver, onBoardRotate, onPiecePlaced]);
+  }, [movePiece, rotatePiece, dropPiece, restart, isGameOver, onBoardRotate]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);

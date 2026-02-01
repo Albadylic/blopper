@@ -43,13 +43,14 @@ export function rotateGrid(
 }
 
 // Calculate the visual rotation angle after a board rotation
+// Let angles accumulate freely to avoid CSS animation issues at 0°/360° boundary
 export function calculateRotationAngle(
   currentAngle: number,
   direction: RotationDirection
 ): number {
   if (direction === 'clockwise') {
-    return (currentAngle + 90) % 360;
+    return currentAngle + 90;
   } else {
-    return (currentAngle - 90 + 360) % 360;
+    return currentAngle - 90;
   }
 }

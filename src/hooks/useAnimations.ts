@@ -62,23 +62,28 @@ export function useAnimations({ startAnimation, endAnimation }: AnimationCallbac
       const anim = animations[currentIndex];
       currentIndex++;
 
-      anim.beforeStart?.();
-
       // Clear any existing timeout
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
 
+      // Start animation FIRST so CSS transitions are active before state changes
       startAnimation(anim.type);
 
-      const duration = ANIMATION_DURATIONS[anim.type === 'rotating' ? 'rotation' : anim.type];
+      // Use setTimeout(0) to ensure state updates happen in separate batches
+      // This allows the CSS transition-duration to be set before the animated property changes
+      setTimeout(() => {
+        anim.beforeStart?.();
 
-      animationTimeoutRef.current = window.setTimeout(() => {
-        endAnimation(anim.type);
-        animationTimeoutRef.current = null;
-        anim.afterComplete?.();
-        processNext();
-      }, duration);
+        const duration = ANIMATION_DURATIONS[anim.type === 'rotating' ? 'rotation' : anim.type];
+
+        animationTimeoutRef.current = window.setTimeout(() => {
+          endAnimation(anim.type);
+          animationTimeoutRef.current = null;
+          anim.afterComplete?.();
+          processNext();
+        }, duration);
+      }, 0);
     };
 
     processNext();
