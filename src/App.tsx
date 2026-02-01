@@ -7,7 +7,7 @@ function App() {
   const [gameStarted, setGameStarted] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col items-center py-4">
+    <div className="min-h-screen flex flex-col items-center py-4 origin-top scale-[0.8]">
       <header className="flex flex-col items-center mb-6">
         <h1 className="text-4xl font-bold text-white">Rotatetris</h1>
         <nav className="flex gap-4 mt-2">
